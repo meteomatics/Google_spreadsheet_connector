@@ -1,0 +1,121 @@
+function callWeatherAPI() 
+{
+  
+  var sheet            = SpreadsheetApp.getActiveSheet();
+  var startdate        = sheet.getRange(1,2).getValue();
+  var enddate          = sheet.getRange(2,2).getValue();
+  var param            = sheet.getRange(7,2).getValue();
+  var lat              = sheet.getRange(4,2).getValue();
+  
+  if(typeof(lat)=="string")
+   lat = lat.replace(/\,/g, ".");
+  
+  var lon              = sheet.getRange(5,2).getValue();
+  
+  if(typeof(lon)=="string")
+   lon = lon.replace(/\,/g, ".");
+  
+  var temp_resolution  = sheet.getRange(1,5).getValue();
+      
+  var username  = sheet.getRange(4,5).getValue();
+  var password  = sheet.getRange(5,5).getValue();
+  
+  
+  var options = {};
+  options.headers = {"Authorization": "Basic " + Utilities.base64Encode(username + ":" + password)};
+  
+  var url = "https://api.meteomatics.com/"+ startdate + "--" + enddate + ":" + temp_resolution + "/"+ param +"/" + lat + "," + lon + "/csv"
+  Logger.log(url)
+  
+  var response =UrlFetchApp.fetch(url, options);  
+  
+  var str = response.getContentText();
+  str = str.replace(/\n/g, ";");
+  str = str.replace(/\./g, ",");
+ 
+  var res = CSVtoArray(str);
+  
+  var arrayLength = res.length;
+  var num_cols=0
+  for (var i = 0; i < arrayLength; i++) 
+  {
+    if(i>0 && res[i][0]=='2')
+    {
+      num_cols=i;
+      break;
+    }
+  }
+  
+ 
+  arrayLength=arrayLength-1;
+  
+  num_rows=(arrayLength/num_cols)
+
+  var sheet = SpreadsheetApp.getActiveSheet();
+
+  startcell_row = 9;
+  startcell_col = 1;
+  
+  var end_row = sheet.getLastRow() - 1;
+  
+    Logger.log(end_row)
+
+  sheet.deleteRows(startcell_row, end_row-startcell_row);
+  
+  var z=0
+  for (var i = 0; i < num_rows; i++) 
+    for (var j = 0; j < num_cols; j++) 
+    {
+      z = i*num_cols+j;
+      str = res[z];
+       Logger.log(str)
+      str = str.replace(/\./g, ",");
+      sheet.getRange(i+startcell_row,j+startcell_col).setValue(str);
+    }
+     
+  end_row = sheet.getLastRow() - 1;  
+  
+  // Plot
+  // Erase old charts
+  var charts = sheet.getCharts();
+  for (var i in charts) {
+    sheet.removeChart(charts[i]);
+  }
+
+  
+  var chart = sheet.newChart()
+     .setChartType(Charts.ChartType.LINE)
+     .addRange(sheet.getRange("A11:B" + end_row))
+     .setPosition(10, 5, 0, 0)
+     .setOption('title',param)
+     .setOption('hAxis.title','Time')
+     .build();
+     
+  sheet.insertChart(chart);
+
+}
+
+function onOpen() 
+{
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('Call Weather API')
+      .addItem('Query API','callWeatherAPI')
+      .addToUi();
+}
+
+function CSVtoArray(text) 
+{
+     var re_valid =  /^\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^;'"\s\\]*(?:\s+[^;'"\s\\]+)*)\s*(?:;\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^;'"\s\\]*(?:\s+[^;'"\s\\]+)*)\s*)*$/;
+     var re_value =  /(?!\s*$)\s*(?:'([^'\\]*(?:\\[\S\s][^'\\]*)*)'|"([^"\\]*(?:\\[\S\s][^"\\]*)*)"|([^;'"\s\\]*(?:\s+[^;'"\s\\]+)*))\s*(?:;|$)/g;
+    if (!re_valid.test(text)) return null;
+    var a = [];                    
+    text.replace(re_value,
+        function(m0, m1, m2, m3) {
+            if      (m1 !== undefined) a.push(m1.replace(/\\'/g, "'"));
+            else if (m2 !== undefined) a.push(m2.replace(/\\"/g, '"'));
+            else if (m3 !== undefined) a.push(m3);
+            return ''; 
+        });
+    if (/;\s*$/.test(text)) a.push('');
+    return a;
+};
